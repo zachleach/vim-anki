@@ -112,11 +112,11 @@ Vimscript + embedded Python at `~/.claude/anki/statusline/anki_statusline.vim`. 
 Sourced from `~/.vimrc`: `source ~/.claude/anki/statusline/anki_statusline.vim`
 
 ## Reference Files
-These are from the original Python-based anki system this project is based on:
-- `REFERENCE-anki.py` — original Python implementation
-- `REFERENCE-README.md` — original documentation
-- `REFERENCE-statusline.go` — Claude Code statusline (Go binary)
-- `REFERENCE-statusline.vim` — vim statusline (vimscript + Python)
+These are from the original Python-based anki system this project is based on, in `reference/`:
+- `reference/REFERENCE-anki.py` — original Python implementation
+- `reference/REFERENCE-README.md` — original documentation
+- `reference/REFERENCE-statusline.go` — Claude Code statusline (Go binary)
+- `reference/REFERENCE-statusline.vim` — vim statusline (vimscript + Python)
 
 ## Dependencies
 - Go 1.18+, CGO_ENABLED=1
