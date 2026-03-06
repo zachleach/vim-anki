@@ -90,7 +90,7 @@ autocmd BufWritePost *.txt silent! call system('review sync ' . shellescape(expa
 - `parse.go` — `>\t` file parser, Chunk struct (strips `>\t` prefix before storing)
 - `db.go` — SQLite schema, all CRUD operations
 - `review.go` — vim display, due review loop, custom study loop
-- `tree.go` — fzf dashboard (file selector with due counts, streak), JSON output
+- `fzf-dashboard.go` — fzf dashboard (file selector with due counts, streak), JSON output
 - `statusline/main.go` — Claude Code statusline Go binary
 - `statusline/statusline.vim` — vim statusline (vimscript + embedded Python)
 
