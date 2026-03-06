@@ -11,6 +11,12 @@ import (
 	"strings"
 )
 
+func clearScreen() {
+	cmd := exec.Command("clear")
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
+
 type card struct {
 	questionLine string
 	chunk        Chunk
@@ -29,7 +35,7 @@ func displayInVim(chunk Chunk, name string) int {
 	}
 	args = append(args, "-")
 
-	exec.Command("clear").Run()
+	clearScreen()
 
 	cmd := exec.Command("vim", args...)
 	cmd.Stdin = bytes.NewReader([]byte(chunk.FullText))
@@ -68,7 +74,7 @@ func openFileForEdit(filePath, questionLine string) {
 		cmd.Stderr = os.Stderr
 		cmd.Run()
 	}
-	exec.Command("clear").Run()
+	clearScreen()
 }
 
 func getDueCards(db *sql.DB, chunks []Chunk, reviewed map[string]bool) []card {
@@ -102,7 +108,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 			if len(reviewed) == 0 {
 				fmt.Println("No due questions in this file.")
 			}
-			exec.Command("clear").Run()
+			clearScreen()
 			return
 		}
 
@@ -118,7 +124,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 
 			switch exitCode {
 			case Quit:
-				exec.Command("clear").Run()
+				clearScreen()
 				return
 
 			case Edit:
@@ -131,7 +137,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 
 			case Undo:
 				if len(history) == 0 {
-					exec.Command("clear").Run()
+					clearScreen()
 					return
 				}
 				prev := history[len(history)-1]
@@ -166,7 +172,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 		}
 
 		if !broke {
-			exec.Command("clear").Run()
+			clearScreen()
 			return
 		}
 	}
@@ -196,7 +202,7 @@ func customStudy(db *sql.DB, filePath string) {
 			if len(reviewed) == 0 {
 				fmt.Println("No questions in this file.")
 			}
-			exec.Command("clear").Run()
+			clearScreen()
 			return
 		}
 
@@ -212,7 +218,7 @@ func customStudy(db *sql.DB, filePath string) {
 
 			switch exitCode {
 			case Quit:
-				exec.Command("clear").Run()
+				clearScreen()
 				return
 
 			case Edit:
@@ -221,7 +227,7 @@ func customStudy(db *sql.DB, filePath string) {
 
 			case Undo:
 				if len(history) == 0 {
-					exec.Command("clear").Run()
+					clearScreen()
 					return
 				}
 				prev := history[len(history)-1]
@@ -245,7 +251,7 @@ func customStudy(db *sql.DB, filePath string) {
 		}
 
 		if !broke {
-			exec.Command("clear").Run()
+			clearScreen()
 			return
 		}
 	}

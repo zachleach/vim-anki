@@ -261,10 +261,45 @@ func syncFileQuestions(db *sql.DB, filePath string) {
 func syncAllTrackedFiles(db *sql.DB) {
 	for _, f := range getTrackedFiles(db) {
 		if _, err := os.Stat(f); err != nil {
-			continue // file gone — skip, questions may reappear in another file
+			// file gone — remove its DB rows
+			db.Exec("DELETE FROM schedule_info WHERE file_path = ?", f)
+			continue
 		}
 		syncFileQuestions(db, f)
 	}
+}
+
+func moveFile(db *sql.DB, src, dst string) {
+	absSrc, _ := filepath.Abs(src)
+
+	if _, err := os.Stat(absSrc); err != nil {
+		fmt.Fprintf(os.Stderr, "source not found: %s\n", src)
+		os.Exit(1)
+	}
+
+	absDst, _ := filepath.Abs(dst)
+
+	// ensure destination directory exists
+	dstDir := filepath.Dir(absDst)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// move the file
+	if err := os.Rename(absSrc, absDst); err != nil {
+		fmt.Fprintf(os.Stderr, "error moving file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// update all DB references from old path to new path
+	result, _ := db.Exec("UPDATE schedule_info SET file_path = ? WHERE file_path = ?", absDst, absSrc)
+	n, _ := result.RowsAffected()
+
+	// sync the new file to pick up any changes
+	syncFileQuestions(db, absDst)
+
+	fmt.Printf("Moved %s -> %s (%d card(s) updated)\n", absSrc, absDst, n)
 }
 
 func forgetFileSchedule(db *sql.DB, filePath string) {

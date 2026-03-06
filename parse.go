@@ -43,7 +43,7 @@ func buildChunk(lines []string) Chunk {
 		lines = lines[:len(lines)-1]
 	}
 	return Chunk{
-		QuestionLine: strings.TrimPrefix(lines[0], ">\t"),
+		QuestionLine: strings.TrimRight(strings.TrimPrefix(lines[0], ">\t"), " \t"),
 		FullText:     strings.Join(lines, "\n"),
 	}
 }

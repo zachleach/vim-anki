@@ -63,6 +63,8 @@ review sync <file>        # parse + register if file has >	lines (for vim autocm
 review forget <file>      # reset schedule for file
 review flagged            # list all flagged questions
 review unflag <question>  # unflag a question
+review --mv <src> <dst>   # move file + update DB paths + sync
+review --all              # fzf browse all tracked files (preview + custom study, uses bash wrapper)
 review --json [path]      # JSON output: {"total": N, "files": [...]}
 review --list             # dump schedule_info table (sqlite3 -table format)
 ```
@@ -102,6 +104,12 @@ autocmd BufWritePost *.txt silent! call system('review sync ' . shellescape(expa
 - Header: dark green (`#008c08`), selected line: bright green (`#00e60d`), prompt: dark green
 - fzf flags: `--ansi --no-sort --reverse --no-info --with-nth=2` (path hidden, used for selection)
 
+### Browse All (`--all`)
+`review --all` shows all tracked files (even those with 0 due) in fzf with a preview panel listing questions. Selecting a file launches custom study. The bash wrapper in `~/.bashrc` handles `--all` via `--select-all` (prints selected path) then runs `review -f <file>`, with `cd` to the file's directory first.
+
+- Preview: `#   ~/path` header + questions prefixed with `>   `
+- Display: due/total counts per file (e.g. `  3/15` or `   15` if none due)
+
 ## Patterns
 - Re-parse file after EDIT (user may modify during session)
 - Slice-based queue (prepend for wrong/undo)
@@ -125,6 +133,9 @@ Vimscript + embedded Python at `statusline/statusline.vim`. Persistent SQLite co
 Sourced from `~/.vimrc`: `source ~/review/statusline/statusline.vim`
 
 Both statusline queries exclude flagged questions from due counts (`AND flagged = 0`).
+
+## Claude Code Skill
+The `note` skill at `~/.claude/skills/note/SKILL.md` handles note file organization — renaming, splitting, and combining `.txt` note files. It triggers on anything about notes, note-taking, or organizing note files. The skill proposes changes, waits for approval, then executes and runs `review sync` on each new file.
 
 ## Reference Files
 These are from the original Python-based anki system this project is based on, in `reference/`:

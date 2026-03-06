@@ -41,9 +41,55 @@ func main() {
 		return
 	}
 
+	// review --select (print selected file path for shell wrapper)
+	if hasFlag(args, "--select") {
+		selected := displayDashboard(db)
+		if selected != "" {
+			fmt.Println(selected)
+		}
+		return
+	}
+
+	// review --select-all (print selected file path from all-files dashboard, for shell wrapper)
+	if hasFlag(args, "--select-all") {
+		selected := displayAllDashboard(db)
+		if selected != "" {
+			fmt.Println(selected)
+		}
+		return
+	}
+
+	// review --all (browse all tracked files, custom study on select)
+	if hasFlag(args, "--all") {
+		selected := displayAllDashboard(db)
+		if selected != "" {
+			customStudy(db, selected)
+		}
+		return
+	}
+
 	// review --list
 	if hasFlag(args, "--list") {
 		listAllQuestions(db)
+		return
+	}
+
+	// review --mv <src> <dst>
+	if hasFlag(args, "--mv") {
+		src := flagArg(args, "--mv")
+		// dst is the arg after src
+		dst := ""
+		for i, a := range args {
+			if a == "--mv" && i+2 < len(args) {
+				dst = args[i+2]
+				break
+			}
+		}
+		if src == "" || dst == "" {
+			fmt.Fprintln(os.Stderr, "usage: review --mv <src> <dst>")
+			os.Exit(1)
+		}
+		moveFile(db, src, dst)
 		return
 	}
 
