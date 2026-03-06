@@ -23,7 +23,7 @@ type historyEntry struct {
 }
 
 func displayInVim(chunk Chunk, name string) int {
-	args := []string{"-c", "normal ggjdG"}
+	args := []string{"--not-a-term", "-c", "normal ggjdG"}
 	if name != "" {
 		args = append(args, "-c", fmt.Sprintf("file %s", name))
 	}
