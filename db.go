@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -85,6 +86,16 @@ func unflagQuestion(db *sql.DB, question string) {
 	}
 }
 
+func listAllQuestions(db *sql.DB) {
+	out, err := exec.Command("sqlite3", "-header", "-table", dbPath(),
+		"SELECT question, file_path, due_date, review_date_index, flagged FROM schedule_info ORDER BY file_path, question;").Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error querying database: %v\n", err)
+		return
+	}
+	fmt.Print(string(out))
+}
+
 func listFlagged(db *sql.DB) {
 	rows, err := db.Query("SELECT question, file_path FROM schedule_info WHERE flagged = 1 ORDER BY file_path")
 	if err != nil {
@@ -104,15 +115,12 @@ func listFlagged(db *sql.DB) {
 			}
 		}
 
-		q := question
-		if len(q) > 2 {
-			q = q[2:] // strip >\t prefix
-		}
-		if len(q) > 60 {
-			q = q[:60] + "..."
+		display := question
+		if len(display) > 60 {
+			display = display[:60] + "..."
 		}
 
-		fmt.Printf("%s\n  %s\n  %s\n\n", displayPath, q, question)
+		fmt.Printf("%s\n  %s\n  %s\n\n", displayPath, display, question)
 		count++
 	}
 

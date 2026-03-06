@@ -41,6 +41,12 @@ func main() {
 		return
 	}
 
+	// review --list
+	if hasFlag(args, "--list") {
+		listAllQuestions(db)
+		return
+	}
+
 	// review flagged
 	if len(args) >= 1 && args[0] == "flagged" {
 		listFlagged(db)

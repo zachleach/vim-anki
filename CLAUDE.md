@@ -37,7 +37,7 @@ SQLite at `~/.notes.db`.
 
 ```sql
 schedule_info (
-    question TEXT PRIMARY KEY,       -- full question line including >\t prefix
+    question TEXT PRIMARY KEY,       -- question text (>\t prefix stripped)
     file_path TEXT,
     due_date TEXT NOT NULL,          -- YYYY-MM-DD
     review_date_index INTEGER NOT NULL,
@@ -64,6 +64,7 @@ review forget <file>      # reset schedule for file
 review flagged            # list all flagged questions
 review unflag <question>  # unflag a question
 review --json [path]      # JSON output: {"total": N, "files": [...]}
+review --list             # dump schedule_info table (sqlite3 -table format)
 ```
 
 ## Vim Review Interface
@@ -86,7 +87,7 @@ autocmd BufWritePost *.txt silent! call system('review sync ' . shellescape(expa
 
 ## Source Files
 - `main.go` — CLI entry point, constants, arg dispatch
-- `parse.go` — `>\t` file parser, SHA-256 hashing, Chunk struct
+- `parse.go` — `>\t` file parser, Chunk struct (strips `>\t` prefix before storing)
 - `db.go` — SQLite schema, all CRUD operations
 - `review.go` — vim display, due review loop, custom study loop
 - `tree.go` — fzf dashboard (file selector with due counts, streak), JSON output

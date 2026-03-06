@@ -49,7 +49,7 @@ func openFileForEdit(filePath, questionLine string) {
 
 	lineNum := 0
 	for i, line := range strings.Split(string(data), "\n") {
-		if line == questionLine {
+		if line == ">\t"+questionLine {
 			lineNum = i + 1
 			break
 		}
