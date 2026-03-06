@@ -76,6 +76,7 @@ for s:i in range(len(s:gradient))
   exe printf('hi ReviewRainbow%d guifg=%s guibg=NONE gui=NONE', s:i, s:gradient[s:i])
 endfor
 hi ReviewDim guifg=#BFBFBF guibg=NONE gui=NONE
+hi ReviewDark guifg=#646464 guibg=NONE gui=NONE
 hi ReviewPad guifg=#000000 guibg=#000000 gui=NONE
 hi ReviewNormal guifg=NONE guibg=NONE gui=NONE
 
@@ -123,18 +124,28 @@ function! ReviewStatusline() abort
   let streak_text = printf(' · %d day streak', s:streak)
 
   let result = ''
-  let ci = 0
-  for char in split(due_text, '\zs')
-    if char ==# ' '
-      let result .= ' '
-    else
-      let gi = (ci + s:tick) % len(s:gradient)
-      let result .= '%#ReviewRainbow' . gi . '#' . char
-      let ci += 1
-    endif
-  endfor
+  if s:due_count == 0
+    let result = '%#ReviewDark#' . due_text
+  else
+    let ci = 0
+    for char in split(due_text, '\zs')
+      if char ==# ' '
+        let result .= ' '
+      else
+        let gi = (ci + s:tick) % len(s:gradient)
+        let result .= '%#ReviewRainbow' . gi . '#' . char
+        let ci += 1
+      endif
+    endfor
+  endif
 
-  return result . '%#ReviewDim#' . streak_text . '%#ReviewNormal#'
+  if s:due_count == 0
+    let result .= '%#ReviewDark#' . streak_text
+  else
+    let result .= '%#ReviewDim#' . streak_text
+  endif
+
+  return result . '%#ReviewNormal#'
 endfunction
 
 function! s:on_tick(timer) abort
