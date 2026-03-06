@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type ScheduleRow struct {
-	QuestionHash    string
+	Question        string
 	FilePath        string
 	DueDate         string
 	ReviewDateIndex int
+	Flagged         bool
 }
 
 func dbPath() string {
@@ -28,31 +30,39 @@ func openDB() (*sql.DB, error) {
 
 func initDB(db *sql.DB) error {
 	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS tracked_file (
-			file_path TEXT PRIMARY KEY,
-			created_at TEXT
-		);
 		CREATE TABLE IF NOT EXISTS schedule_info (
-			question_hash TEXT PRIMARY KEY,
+			question TEXT PRIMARY KEY,
 			file_path TEXT,
 			due_date TEXT NOT NULL,
-			review_date_index INTEGER NOT NULL
+			review_date_index INTEGER NOT NULL,
+			flagged INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE TABLE IF NOT EXISTS review_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			question_hash TEXT,
+			question TEXT,
 			reviewed_at TEXT,
 			outcome TEXT,
 			review_date_index INTEGER
 		);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// migrate: add flagged column if missing
+	db.Exec("ALTER TABLE schedule_info ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0")
+
+	// migrate: move data from flagged_questions table if it exists
+	db.Exec("UPDATE schedule_info SET flagged = 1 WHERE question IN (SELECT question FROM flagged_questions)")
+	db.Exec("DROP TABLE IF EXISTS flagged_questions")
+
+	return nil
 }
 
-func getScheduleInfo(db *sql.DB, hash string) (*ScheduleRow, error) {
-	row := db.QueryRow("SELECT question_hash, file_path, due_date, review_date_index FROM schedule_info WHERE question_hash = ?", hash)
+func getScheduleInfo(db *sql.DB, question string) (*ScheduleRow, error) {
+	row := db.QueryRow("SELECT question, file_path, due_date, review_date_index, flagged FROM schedule_info WHERE question = ?", question)
 	var r ScheduleRow
-	err := row.Scan(&r.QuestionHash, &r.FilePath, &r.DueDate, &r.ReviewDateIndex)
+	err := row.Scan(&r.Question, &r.FilePath, &r.DueDate, &r.ReviewDateIndex, &r.Flagged)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -62,21 +72,76 @@ func getScheduleInfo(db *sql.DB, hash string) (*ScheduleRow, error) {
 	return &r, nil
 }
 
-func isDue(db *sql.DB, hash string) bool {
-	info, err := getScheduleInfo(db, hash)
+func flagQuestionDB(db *sql.DB, question, filePath string) {
+	db.Exec("UPDATE schedule_info SET flagged = 1 WHERE question = ?", question)
+}
+
+func unflagQuestion(db *sql.DB, question string) {
+	result, _ := db.Exec("UPDATE schedule_info SET flagged = 0 WHERE question = ? AND flagged = 1", question)
+	if n, _ := result.RowsAffected(); n > 0 {
+		fmt.Println("Unflagged question.")
+	} else {
+		fmt.Println("Question not found in flagged list.")
+	}
+}
+
+func listFlagged(db *sql.DB) {
+	rows, err := db.Query("SELECT question, file_path FROM schedule_info WHERE flagged = 1 ORDER BY file_path")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var question, filePath string
+		rows.Scan(&question, &filePath)
+
+		displayPath := filePath
+		if home, err := os.UserHomeDir(); err == nil {
+			if rel, _ := filepath.Rel(home, filePath); !strings.HasPrefix(rel, "..") {
+				displayPath = "~/" + rel
+			}
+		}
+
+		q := question
+		if len(q) > 2 {
+			q = q[2:] // strip >\t prefix
+		}
+		if len(q) > 60 {
+			q = q[:60] + "..."
+		}
+
+		fmt.Printf("%s\n  %s\n  %s\n\n", displayPath, q, question)
+		count++
+	}
+
+	if count == 0 {
+		fmt.Println("No flagged questions.")
+	} else {
+		fmt.Printf("%d flagged question(s).\n", count)
+	}
+}
+
+func isDue(db *sql.DB, question string) bool {
+	info, err := getScheduleInfo(db, question)
 	if err != nil || info == nil {
 		return true // new cards are always due
+	}
+	if info.Flagged {
+		return false
 	}
 	dueDate, err := time.Parse("2006-01-02", info.DueDate)
 	if err != nil {
 		return true
 	}
-	today := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	return !dueDate.After(today)
 }
 
-func updateSchedule(db *sql.DB, hash, filePath string, result int) {
-	info, _ := getScheduleInfo(db, hash)
+func updateSchedule(db *sql.DB, question, filePath string, result int) {
+	info, _ := getScheduleInfo(db, question)
 	currentIndex := 1 // new cards start at index 1
 	if info != nil {
 		currentIndex = info.ReviewDateIndex
@@ -103,8 +168,8 @@ func updateSchedule(db *sql.DB, hash, filePath string, result int) {
 	}
 
 	db.Exec(
-		"INSERT OR REPLACE INTO schedule_info (question_hash, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
-		hash, filePath, dueDate, newIndex,
+		"INSERT OR REPLACE INTO schedule_info (question, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
+		question, filePath, dueDate, newIndex,
 	)
 
 	// log the review
@@ -113,14 +178,14 @@ func updateSchedule(db *sql.DB, hash, filePath string, result int) {
 		if result == Correct {
 			outcome = "correct"
 		}
-		insertReviewLog(db, hash, outcome, newIndex)
+		insertReviewLog(db, question, outcome, newIndex)
 	}
 }
 
-func insertReviewLog(db *sql.DB, hash, outcome string, index int) {
+func insertReviewLog(db *sql.DB, question, outcome string, index int) {
 	db.Exec(
-		"INSERT INTO review_log (question_hash, reviewed_at, outcome, review_date_index) VALUES (?, datetime('now'), ?, ?)",
-		hash, outcome, index,
+		"INSERT INTO review_log (question, reviewed_at, outcome, review_date_index) VALUES (?, datetime('now'), ?, ?)",
+		question, outcome, index,
 	)
 }
 
@@ -131,23 +196,15 @@ func countDueInFile(db *sql.DB, filePath string) int {
 	}
 	count := 0
 	for _, c := range chunks {
-		if isDue(db, computeHash(c.QuestionLine)) {
+		if isDue(db, c.QuestionLine) {
 			count++
 		}
 	}
 	return count
 }
 
-func trackFile(db *sql.DB, filePath string) {
-	abs, _ := filepath.Abs(filePath)
-	db.Exec(
-		"INSERT OR IGNORE INTO tracked_file (file_path, created_at) VALUES (?, datetime('now'))",
-		abs,
-	)
-}
-
 func getTrackedFiles(db *sql.DB) []string {
-	rows, err := db.Query("SELECT file_path FROM tracked_file ORDER BY file_path")
+	rows, err := db.Query("SELECT DISTINCT file_path FROM schedule_info ORDER BY file_path")
 	if err != nil {
 		return nil
 	}
@@ -168,46 +225,37 @@ func syncFileQuestions(db *sql.DB, filePath string) {
 		return
 	}
 
-	trackFile(db, abs)
-
 	chunks, err := parseChunks(abs)
 	if err != nil {
 		return
 	}
 
-	// collect current hashes
-	currentHashes := make(map[string]bool)
+	// collect current questions
+	currentQuestions := make(map[string]bool)
 	today := time.Now().Format("2006-01-02")
 
 	for _, c := range chunks {
-		hash := computeHash(c.QuestionLine)
-		currentHashes[hash] = true
+		currentQuestions[c.QuestionLine] = true
 
 		// insert new questions only (don't overwrite existing schedule)
-		info, _ := getScheduleInfo(db, hash)
+		info, _ := getScheduleInfo(db, c.QuestionLine)
 		if info == nil {
 			db.Exec(
-				"INSERT INTO schedule_info (question_hash, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
-				hash, abs, today, 1,
+				"INSERT INTO schedule_info (question, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
+				c.QuestionLine, abs, today, 1,
 			)
+		} else if info.FilePath != abs {
+			db.Exec("UPDATE schedule_info SET file_path = ? WHERE question = ?", abs, c.QuestionLine)
 		}
 	}
+}
 
-	// remove orphaned entries for this file
-	rows, _ := db.Query("SELECT question_hash FROM schedule_info WHERE file_path = ?", abs)
-	if rows != nil {
-		defer rows.Close()
-		var orphans []string
-		for rows.Next() {
-			var h string
-			rows.Scan(&h)
-			if !currentHashes[h] {
-				orphans = append(orphans, h)
-			}
+func syncAllTrackedFiles(db *sql.DB) {
+	for _, f := range getTrackedFiles(db) {
+		if _, err := os.Stat(f); err != nil {
+			continue // file gone — skip, questions may reappear in another file
 		}
-		for _, h := range orphans {
-			db.Exec("DELETE FROM schedule_info WHERE question_hash = ?", h)
-		}
+		syncFileQuestions(db, f)
 	}
 }
 
@@ -221,13 +269,13 @@ func forgetFileSchedule(db *sql.DB, filePath string) {
 	}
 }
 
-func restoreScheduleState(db *sql.DB, hash string, prev *ScheduleRow) {
+func restoreScheduleState(db *sql.DB, question string, prev *ScheduleRow) {
 	if prev == nil {
-		db.Exec("DELETE FROM schedule_info WHERE question_hash = ?", hash)
+		db.Exec("DELETE FROM schedule_info WHERE question = ?", question)
 	} else {
 		db.Exec(
-			"INSERT OR REPLACE INTO schedule_info (question_hash, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
-			prev.QuestionHash, prev.FilePath, prev.DueDate, prev.ReviewDateIndex,
+			"INSERT OR REPLACE INTO schedule_info (question, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
+			prev.Question, prev.FilePath, prev.DueDate, prev.ReviewDateIndex,
 		)
 	}
 }

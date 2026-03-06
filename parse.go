@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -10,10 +8,6 @@ import (
 type Chunk struct {
 	QuestionLine string
 	FullText     string
-}
-
-func computeHash(text string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(text)))
 }
 
 func parseChunks(filePath string) ([]Chunk, error) {

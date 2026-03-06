@@ -17,7 +17,7 @@ type card struct {
 }
 
 type historyEntry struct {
-	hash      string
+	question  string
 	prevState *ScheduleRow
 	card      card
 }
@@ -71,11 +71,10 @@ func openFileForEdit(filePath, questionLine string) {
 	exec.Command("clear").Run()
 }
 
-func getDueCards(db *sql.DB, chunks []Chunk, reviewedHashes map[string]bool) []card {
+func getDueCards(db *sql.DB, chunks []Chunk, reviewed map[string]bool) []card {
 	var due []card
 	for _, c := range chunks {
-		hash := computeHash(c.QuestionLine)
-		if !reviewedHashes[hash] && isDue(db, hash) {
+		if !reviewed[c.QuestionLine] && isDue(db, c.QuestionLine) {
 			due = append(due, card{questionLine: c.QuestionLine, chunk: c})
 		}
 	}
@@ -85,10 +84,10 @@ func getDueCards(db *sql.DB, chunks []Chunk, reviewedHashes map[string]bool) []c
 func reviewDueQuestions(db *sql.DB, filePath string) {
 	abs, _ := filepath.Abs(filePath)
 
-	// auto-sync on review
-	syncFileQuestions(db, abs)
+	// change to file's directory so tmux panes open in context
+	os.Chdir(filepath.Dir(abs))
 
-	reviewedHashes := make(map[string]bool)
+	reviewed := make(map[string]bool)
 	var history []historyEntry
 
 	for {
@@ -98,9 +97,9 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 			return
 		}
 
-		due := getDueCards(db, chunks, reviewedHashes)
+		due := getDueCards(db, chunks, reviewed)
 		if len(due) == 0 {
-			if len(reviewedHashes) == 0 {
+			if len(reviewed) == 0 {
 				fmt.Println("No due questions in this file.")
 			}
 			exec.Command("clear").Run()
@@ -114,7 +113,6 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 		for len(queue) > 0 {
 			c := queue[0]
 			queue = queue[1:]
-			hash := computeHash(c.questionLine)
 
 			exitCode := displayInVim(c.chunk, filepath.Base(abs))
 
@@ -127,6 +125,10 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 				openFileForEdit(abs, c.questionLine)
 				broke = true
 
+			case Flag:
+				flagQuestionDB(db, c.questionLine, abs)
+				reviewed[c.questionLine] = true
+
 			case Undo:
 				if len(history) == 0 {
 					exec.Command("clear").Run()
@@ -135,26 +137,26 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 				prev := history[len(history)-1]
 				history = history[:len(history)-1]
 
-				restoreScheduleState(db, prev.hash, prev.prevState)
-				delete(reviewedHashes, prev.hash)
+				restoreScheduleState(db, prev.question, prev.prevState)
+				delete(reviewed, prev.question)
 
 				// put current card back, then previous card in front
 				queue = append([]card{prev.card, c}, queue...)
 
 			default: // Wrong, Correct, Skip
-				prevState, _ := getScheduleInfo(db, hash)
+				prevState, _ := getScheduleInfo(db, c.questionLine)
 				history = append(history, historyEntry{
-					hash:      hash,
+					question:  c.questionLine,
 					prevState: prevState,
 					card:      c,
 				})
 
-				updateSchedule(db, hash, abs, exitCode)
+				updateSchedule(db, c.questionLine, abs, exitCode)
 
 				if exitCode == Wrong {
 					queue = append([]card{c}, queue...)
 				} else {
-					reviewedHashes[hash] = true
+					reviewed[c.questionLine] = true
 				}
 			}
 
@@ -173,7 +175,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 func customStudy(db *sql.DB, filePath string) {
 	abs, _ := filepath.Abs(filePath)
 
-	reviewedHashes := make(map[string]bool)
+	reviewed := make(map[string]bool)
 	var history []historyEntry
 
 	for {
@@ -185,14 +187,13 @@ func customStudy(db *sql.DB, filePath string) {
 
 		var remaining []card
 		for _, c := range chunks {
-			hash := computeHash(c.QuestionLine)
-			if !reviewedHashes[hash] {
+			if !reviewed[c.QuestionLine] {
 				remaining = append(remaining, card{questionLine: c.QuestionLine, chunk: c})
 			}
 		}
 
 		if len(remaining) == 0 {
-			if len(reviewedHashes) == 0 {
+			if len(reviewed) == 0 {
 				fmt.Println("No questions in this file.")
 			}
 			exec.Command("clear").Run()
@@ -225,17 +226,16 @@ func customStudy(db *sql.DB, filePath string) {
 				}
 				prev := history[len(history)-1]
 				history = history[:len(history)-1]
-				delete(reviewedHashes, prev.hash)
+				delete(reviewed, prev.question)
 				queue = append([]card{prev.card, c}, queue...)
 
 			default:
-				hash := computeHash(c.questionLine)
-				history = append(history, historyEntry{hash: hash, card: c})
+				history = append(history, historyEntry{question: c.questionLine, card: c})
 
 				if exitCode == Wrong {
 					queue = append([]card{c}, queue...)
 				} else {
-					reviewedHashes[hash] = true
+					reviewed[c.questionLine] = true
 				}
 			}
 

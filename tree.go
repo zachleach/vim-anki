@@ -1,157 +1,124 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-type treeNode struct {
-	name     string
-	fullPath string
-	isDir    bool
-	due      int
-	children []*treeNode
+type dueFile struct {
+	path string
+	name string
+	due  int
 }
 
-func displayDueTree(db *sql.DB, path string) {
+func getDueFiles(db *sql.DB) []dueFile {
 	files := getTrackedFiles(db)
-	if len(files) == 0 {
-		fmt.Println("No tracked files.")
-		return
-	}
-
-	// filter to path if given
-	if path != "" {
-		abs, _ := filepath.Abs(path)
-		var filtered []string
-		for _, f := range files {
-			if strings.HasPrefix(f, abs+"/") || f == abs {
-				filtered = append(filtered, f)
-			}
-		}
-		files = filtered
-	}
-
-	if len(files) == 0 {
-		fmt.Println("No tracked files in this path.")
-		return
-	}
-
-	// compute due counts and find common root
-	type fileInfo struct {
-		path string
-		due  int
-	}
-	var infos []fileInfo
+	var result []dueFile
 	for _, f := range files {
 		if _, err := os.Stat(f); err != nil {
-			continue // skip missing files
+			continue
 		}
 		due := countDueInFile(db, f)
-		infos = append(infos, fileInfo{path: f, due: due})
-	}
-
-	// build tree
-	root := &treeNode{name: ".", isDir: true}
-
-	for _, info := range infos {
-		// determine display path
-		var rel string
-		if path != "" {
-			abs, _ := filepath.Abs(path)
-			rel, _ = filepath.Rel(abs, info.path)
-		} else {
-			home, _ := os.UserHomeDir()
-			rel, _ = filepath.Rel(home, info.path)
-			if strings.HasPrefix(rel, "..") {
-				rel = info.path // use absolute if outside home
-			}
+		if due == 0 {
+			continue
 		}
-
-		parts := strings.Split(rel, "/")
-		node := root
-		for i, part := range parts {
-			isLast := i == len(parts)-1
-			found := false
-			for _, child := range node.children {
-				if child.name == part {
-					node = child
-					found = true
-					break
-				}
-			}
-			if !found {
-				child := &treeNode{
-					name:     part,
-					fullPath: info.path,
-					isDir:    !isLast,
-					due:      0,
-				}
-				if isLast {
-					child.due = info.due
-				}
-				node.children = append(node.children, child)
-				node = child
-			}
-		}
+		name := strings.TrimSuffix(filepath.Base(f), filepath.Ext(f))
+		result = append(result, dueFile{path: f, name: name, due: due})
 	}
-
-	// filter: only show branches with due > 0
-	filterTree(root)
-
-	if len(root.children) == 0 {
-		return
-	}
-
-	fmt.Println(".")
-	printTree(root, "")
-}
-
-func filterTree(node *treeNode) bool {
-	if !node.isDir {
-		return node.due > 0
-	}
-
-	var kept []*treeNode
-	for _, child := range node.children {
-		if filterTree(child) {
-			kept = append(kept, child)
-		}
-	}
-	node.children = kept
-	return len(kept) > 0
-}
-
-func printTree(node *treeNode, prefix string) {
-	// sort: dirs first, then files, alphabetical within each
-	sort.Slice(node.children, func(i, j int) bool {
-		if node.children[i].isDir != node.children[j].isDir {
-			return node.children[i].isDir
-		}
-		return node.children[i].name < node.children[j].name
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].name < result[j].name
 	})
+	return result
+}
 
-	for i, child := range node.children {
-		isLast := i == len(node.children)-1
-		connector := "├── "
-		extension := "│   "
-		if isLast {
-			connector = "└── "
-			extension = "    "
+func computeStreak(db *sql.DB) int {
+	streak := 0
+	for i := 0; ; i++ {
+		var count int
+		db.QueryRow(
+			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', ?)",
+			fmt.Sprintf("-%d days", i),
+		).Scan(&count)
+		if count == 0 {
+			break
 		}
+		streak++
+	}
+	return streak
+}
 
-		if child.isDir {
-			fmt.Printf("%s%s%s/\n", prefix, connector, child.name)
-			printTree(child, prefix+extension)
-		} else {
-			fmt.Printf("%s%s%s %d\n", prefix, connector, child.name, child.due)
+func displayDashboard(db *sql.DB) string {
+	files := getDueFiles(db)
+	if len(files) == 0 {
+		fmt.Println("No cards due.")
+		return ""
+	}
+
+	// total due
+	totalDue := 0
+	for _, f := range files {
+		totalDue += f.due
+	}
+
+	// streak
+	streak := computeStreak(db)
+
+	// header
+	word := "cards"
+	if totalDue == 1 {
+		word = "card"
+	}
+	header := fmt.Sprintf("\033[38;2;0;168;10m%d %s due · %d day streak\033[0m", totalDue, word, streak)
+
+	// find max name length for padding
+	maxLen := 0
+	for _, f := range files {
+		if len(f.name) > maxLen {
+			maxLen = len(f.name)
 		}
 	}
+	pad := maxLen + 6
+
+	// build fzf input lines: path \t padded_display
+	var buf bytes.Buffer
+	for _, f := range files {
+		display := fmt.Sprintf("%-*s%3d", pad, f.name, f.due)
+		fmt.Fprintf(&buf, "%s\t%s\n", f.path, display)
+	}
+
+	cmd := exec.Command("fzf",
+		"--delimiter=\t",
+		"--with-nth=2",
+		"--ansi",
+		"--no-sort",
+		"--reverse",
+		"--no-info",
+		"--header="+header,
+		"--prompt=> ",
+		"--pointer= ",
+		"--color=fg:-1,bg:-1,hl:-1,fg+:#00e60d,bg+:-1,hl+:#00e60d,pointer:-1,prompt:#00a80a",
+	)
+	cmd.Stdin = &buf
+	cmd.Stderr = os.Stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	line := strings.TrimSpace(string(out))
+	parts := strings.SplitN(line, "\t", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
 }
 
 func getDueJSON(db *sql.DB, path string) string {
