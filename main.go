@@ -18,6 +18,32 @@ const (
 var ScheduleIntervals = [7]int{0, 1, 3, 7, 14, 28, 56}
 
 func main() {
+	args := os.Args[1:]
+
+	// review --help (before DB init for speed)
+	if hasFlag(args, "--help") || hasFlag(args, "-h") {
+		fmt.Print(`usage: review [options] [file]
+
+commands:
+  review                    fzf dashboard: select a file to review
+  review <file>             review due questions in file (vim interface)
+  review -f <file>          custom study (all cards, no DB updates)
+  review track <file>       register a file for tracking
+  review sync <file>        parse + register if file has >	lines
+  review forget <file>      reset schedule for file
+  review flagged            list all flagged questions
+  review unflag <question>  unflag a question
+
+flags:
+  --mv <src> <dst>          move file + update DB paths + sync
+  --all                     fzf browse all tracked files with preview
+  --json [path]             JSON output: {"total": N, "files": [...]}
+  --list                    dump schedule_info table
+  --help, -h                show this help
+`)
+		return
+	}
+
 	db, err := openDB()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening database: %v\n", err)
@@ -32,12 +58,19 @@ func main() {
 
 	syncAllTrackedFiles(db)
 
-	args := os.Args[1:]
-
 	// review --json [path]
 	if hasFlag(args, "--json") {
 		path := flagArg(args, "--json")
 		fmt.Println(getDueJSON(db, path))
+		return
+	}
+
+	// review --preview-due <file> (internal: print due questions for fzf preview)
+	if hasFlag(args, "--preview-due") {
+		path := flagArg(args, "--preview-due")
+		if path != "" {
+			printDueQuestions(db, path)
+		}
 		return
 	}
 

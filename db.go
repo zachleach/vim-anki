@@ -230,6 +230,8 @@ func syncFileQuestions(db *sql.DB, filePath string) {
 	abs, _ := filepath.Abs(filePath)
 
 	if !hasQuestionLines(abs) {
+		// no questions in file — remove all rows pointing to it
+		db.Exec("DELETE FROM schedule_info WHERE file_path = ?", abs)
 		return
 	}
 
@@ -255,6 +257,24 @@ func syncFileQuestions(db *sql.DB, filePath string) {
 		} else if info.FilePath != abs {
 			db.Exec("UPDATE schedule_info SET file_path = ? WHERE question = ?", abs, c.QuestionLine)
 		}
+	}
+
+	// remove rows for questions no longer in this file
+	rows, err := db.Query("SELECT question FROM schedule_info WHERE file_path = ?", abs)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var toDelete []string
+	for rows.Next() {
+		var q string
+		rows.Scan(&q)
+		if !currentQuestions[q] {
+			toDelete = append(toDelete, q)
+		}
+	}
+	for _, q := range toDelete {
+		db.Exec("DELETE FROM schedule_info WHERE question = ?", q)
 	}
 }
 

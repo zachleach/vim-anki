@@ -122,6 +122,9 @@ func displayDashboard(db *sql.DB) string {
 		fmt.Fprintf(&buf, "%s\t%s\n", f.path, display)
 	}
 
+	self, _ := os.Executable()
+	previewCmd := fmt.Sprintf(`%s --preview-due "$(echo {} | cut -f1)"`, self)
+
 	cmd := exec.Command("fzf",
 		"--delimiter=\t",
 		"--with-nth=2",
@@ -133,6 +136,8 @@ func displayDashboard(db *sql.DB) string {
 		"--prompt=> ",
 		"--pointer= ",
 		"--color=fg:-1,bg:-1,hl:-1,fg+:#00e60d,bg+:-1,hl+:#00e60d,pointer:-1,prompt:#00a80a",
+		"--preview="+previewCmd,
+		"--preview-window=right:50%:nohidden",
 	)
 	cmd.Stdin = &buf
 	cmd.Stderr = os.Stderr
@@ -228,6 +233,26 @@ func displayAllDashboard(db *sql.DB) string {
 		return ""
 	}
 	return parts[0]
+}
+
+func printDueQuestions(db *sql.DB, filePath string) {
+	chunks, err := parseChunks(filePath)
+	if err != nil {
+		return
+	}
+
+	home, _ := os.UserHomeDir()
+	displayPath := filePath
+	if strings.HasPrefix(filePath, home) {
+		displayPath = "~" + filePath[len(home):]
+	}
+	fmt.Printf("#   %s\n\n", displayPath)
+
+	for _, c := range chunks {
+		if isDue(db, c.QuestionLine) {
+			fmt.Printf(">   %s\n", c.QuestionLine)
+		}
+	}
 }
 
 func getDueJSON(db *sql.DB, path string) string {
