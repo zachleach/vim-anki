@@ -60,6 +60,9 @@ set termguicolors
 " Translate existing cterm colors to gui equivalents
 call s:translate_highlights()
 
+" Fix bold syntax groups after syntax loads (terminal bold-brightens to white)
+autocmd Syntax * call timer_start(0, {-> execute('hi htmlBold guifg=#FFFFFF gui=bold | hi htmlBoldItalic guifg=#FFFFFF gui=bold,italic', '')})
+
 " 11-color gradient matching the Go statusline
 let s:gradient = [
   \ '#F47878', '#F49375', '#F4AE72', '#F4CA78',

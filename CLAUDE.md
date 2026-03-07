@@ -134,6 +134,11 @@ Sourced from `~/.vimrc`: `source ~/review/statusline/statusline.vim`
 
 Both statusline queries exclude flagged questions from due counts (`AND flagged = 0`).
 
+### termguicolors + t_Co=16 interaction
+The vim statusline enables `termguicolors` for truecolor gradient rendering. This breaks the terminal's automatic bold-brightening behavior: with `t_Co=16` (no `termguicolors`), `cterm=bold` with no explicit foreground causes the terminal to brighten default gray to white. With `termguicolors`, vim controls colors entirely via hex values, so bold text inherits `Normal guifg=#BFBFBF` and stays gray.
+
+`s:translate_highlights()` converts all existing cterm colors to gui equivalents using the mintty palette at source time. For syntax groups loaded lazily (e.g. `htmlBold` from markdown), a deferred `Syntax` autocmd with `timer_start(0, ...)` explicitly sets `htmlBold guifg=#FFFFFF gui=bold`. The timer is necessary because `Syntax` fires before the syntax file finishes loading. The fix is intentionally targeted (not generic) — applying white to ALL bold-without-foreground groups would incorrectly change vim UI elements like `ModeMsg` (`-- INSERT --`, `-- VISUAL --`).
+
 ## Claude Code Skill
 The `note` skill at `~/.claude/skills/note/SKILL.md` handles note file organization — renaming, splitting, and combining `.txt` note files. It triggers on anything about notes, note-taking, or organizing note files. The skill proposes changes, waits for approval, then executes and runs `review sync` on each new file.
 
