@@ -70,6 +70,7 @@ let s:gradient = [
 let s:tick = 0
 let s:due_count = 0
 let s:streak = 0
+let s:reviewed_today = 0
 
 " Define rainbow highlight groups from gradient
 for s:i in range(len(s:gradient))
@@ -101,17 +102,22 @@ def review_refresh():
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM schedule_info WHERE due_date <= date('now','localtime') AND flagged = 0")
         due = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now')")
+        reviewed_today = cur.fetchone()[0] > 0
         streak = 0
-        for i in range(366):
+        start = 0 if reviewed_today else 1
+        for i in range(start, 366):
             cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', ?)", (f'-{i} days',))
             if cur.fetchone()[0] == 0:
                 break
             streak += 1
         vim.command(f'let s:due_count = {due}')
         vim.command(f'let s:streak = {streak}')
+        vim.command(f'let s:reviewed_today = {1 if reviewed_today else 0}')
     except Exception:
         vim.command('let s:due_count = 0')
         vim.command('let s:streak = 0')
+        vim.command('let s:reviewed_today = 0')
 PYEOF
 
 function! s:refresh_data() abort
@@ -139,10 +145,10 @@ function! ReviewStatusline() abort
     endfor
   endif
 
-  if s:due_count == 0
-    let result .= '%#ReviewDark#' . streak_text
-  else
+  if s:reviewed_today
     let result .= '%#ReviewDim#' . streak_text
+  else
+    let result .= '%#ReviewDark#' . streak_text
   endif
 
   return result . '%#ReviewNormal#'

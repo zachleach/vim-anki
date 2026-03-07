@@ -69,9 +69,17 @@ func main() {
 		word = "card"
 	}
 
-	// Compute review streak: consecutive days with at least one review ending at today
+	// Compute review streak
+	var todayCount int
+	db.QueryRow("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now')").Scan(&todayCount)
+	reviewedToday := todayCount > 0
+
 	streak := 0
-	for i := 0; ; i++ {
+	start := 0
+	if !reviewedToday {
+		start = 1
+	}
+	for i := start; ; i++ {
 		var count int
 		db.QueryRow(
 			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', ?)",
@@ -83,15 +91,26 @@ func main() {
 		streak++
 	}
 
+	// dark gray streak if not reviewed today
+	streakDim := !reviewedToday
+
 	var out strings.Builder
 
 	if total == 0 {
 		// All dark gray when nothing due
-		fmt.Fprintf(&out, "%s0 cards due · %d day streak%s", dim, streak, reset)
+		if streakDim {
+			fmt.Fprintf(&out, "%s0 cards due · %d day streak%s", dim, streak, reset)
+		} else {
+			fmt.Fprintf(&out, "%s0 cards due%s %s %d day streak", dim, reset, dot, streak)
+		}
 	} else {
 		// Rainbow for cards, default color for the rest
 		out.WriteString(rainbow(fmt.Sprintf("%d %s due", total, word)))
-		fmt.Fprintf(&out, " %s %d day streak", dot, streak)
+		if streakDim {
+			fmt.Fprintf(&out, " %s %s%d day streak%s", dot, dim, streak, reset)
+		} else {
+			fmt.Fprintf(&out, " %s %d day streak", dot, streak)
+		}
 	}
 
 	fmt.Println(out.String())
