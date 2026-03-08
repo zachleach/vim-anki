@@ -140,6 +140,12 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 				broke = true
 
 			case Flag:
+				prevState, _ := getScheduleInfo(db, c.questionLine)
+				history = append(history, historyEntry{
+					question:  c.questionLine,
+					prevState: prevState,
+					card:      c,
+				})
 				flagQuestionDB(db, c.questionLine, abs)
 				reviewed[c.questionLine] = true
 				writeNotification(db, "flagged")

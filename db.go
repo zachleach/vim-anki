@@ -342,8 +342,8 @@ func restoreScheduleState(db *sql.DB, question string, prev *ScheduleRow) {
 		db.Exec("DELETE FROM schedule_info WHERE question = ?", question)
 	} else {
 		db.Exec(
-			"INSERT OR REPLACE INTO schedule_info (question, file_path, due_date, review_date_index) VALUES (?, ?, ?, ?)",
-			prev.Question, prev.FilePath, prev.DueDate, prev.ReviewDateIndex,
+			"INSERT OR REPLACE INTO schedule_info (question, file_path, due_date, review_date_index, flagged) VALUES (?, ?, ?, ?, ?)",
+			prev.Question, prev.FilePath, prev.DueDate, prev.ReviewDateIndex, prev.Flagged,
 		)
 	}
 }
