@@ -193,6 +193,8 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 					} else {
 						writeNotification(db, fmt.Sprintf("due in %d days", days))
 					}
+				case Skip:
+					writeNotification(db, "skipped")
 				}
 
 				if exitCode == Wrong {
