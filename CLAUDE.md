@@ -78,6 +78,7 @@ review --list             # dump schedule_info table (sqlite3 -table format)
 - Wrong re-queues card immediately
 - Undo restores previous DB state, re-shows previous card
 - Edit opens source file at question line, re-parses on return
+- Reveal appends help text to buffer: `again (1), good (4), flag (f), skip (-), edit (e), undo (ctrl-z)`
 
 ## Vim Hotkeys (in ~/.vimrc)
 - `\r` (normal) — save and custom study all cards in current file (`review -f`)
