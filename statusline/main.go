@@ -71,7 +71,7 @@ func main() {
 
 	// Compute review streak
 	var todayCount int
-	db.QueryRow("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now')").Scan(&todayCount)
+	db.QueryRow("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime')").Scan(&todayCount)
 	reviewedToday := todayCount > 0
 
 	streak := 0
@@ -82,7 +82,7 @@ func main() {
 	for i := start; ; i++ {
 		var count int
 		db.QueryRow(
-			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', ?)",
+			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', 'localtime', ?)",
 			fmt.Sprintf("-%d days", i),
 		).Scan(&count)
 		if count == 0 {

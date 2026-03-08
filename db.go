@@ -192,7 +192,7 @@ func updateSchedule(db *sql.DB, question, filePath string, result int) {
 
 func insertReviewLog(db *sql.DB, question, outcome string, index int) {
 	db.Exec(
-		"INSERT INTO review_log (question, reviewed_at, outcome, review_date_index) VALUES (?, datetime('now'), ?, ?)",
+		"INSERT INTO review_log (question, reviewed_at, outcome, review_date_index) VALUES (?, datetime('now','localtime'), ?, ?)",
 		question, outcome, index,
 	)
 }

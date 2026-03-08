@@ -72,7 +72,7 @@ func computeStreak(db *sql.DB) int {
 	for i := 0; ; i++ {
 		var count int
 		db.QueryRow(
-			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', ?)",
+			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', 'localtime', ?)",
 			fmt.Sprintf("-%d days", i),
 		).Scan(&count)
 		if count == 0 {

@@ -105,12 +105,12 @@ def review_refresh():
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM schedule_info WHERE due_date <= date('now','localtime') AND flagged = 0")
         due = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now')")
+        cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime')")
         reviewed_today = cur.fetchone()[0] > 0
         streak = 0
         start = 0 if reviewed_today else 1
         for i in range(start, 366):
-            cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', ?)", (f'-{i} days',))
+            cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime', ?)", (f'-{i} days',))
             if cur.fetchone()[0] == 0:
                 break
             streak += 1
