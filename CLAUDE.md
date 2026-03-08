@@ -79,6 +79,19 @@ review --list             # dump schedule_info table (sqlite3 -table format)
 - Undo restores previous DB state, re-shows previous card
 - Edit opens source file at question line, re-parses on return
 
+## Vim Hotkeys (in ~/.vimrc)
+- `\r` (normal) — save and custom study all cards in current file (`review -f`)
+- `\r` (visual) — save and custom study selected question(s) only (writes selection to temp file)
+
+### Review session keybindings (StdinReadPost, active during vim review)
+- `Space` / `Enter` — reveal answer
+- `1` — wrong (`:cq 1`)
+- `4` — correct (`:cq 4`)
+- `e` — edit source file (`:cq 2`)
+- `-` — skip (`:cq 3`)
+- `Ctrl-z` — undo (`:cq 5`)
+- `f` — flag (`:cq 6`)
+
 ## Auto-tracking
 Vim `BufWritePost *.txt` autocmd calls `review sync` on save. If the file has `>\t` lines, it gets registered and questions synced into DB. Zero extra steps.
 
