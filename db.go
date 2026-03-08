@@ -45,6 +45,11 @@ func initDB(db *sql.DB) error {
 			outcome TEXT,
 			review_date_index INTEGER
 		);
+		CREATE TABLE IF NOT EXISTS review_notify (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			message TEXT NOT NULL,
+			created_at REAL NOT NULL
+		);
 	`)
 	if err != nil {
 		return err

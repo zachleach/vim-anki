@@ -9,7 +9,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
+
+func writeNotification(db *sql.DB, msg string) {
+	db.Exec(
+		"INSERT OR REPLACE INTO review_notify (id, message, created_at) VALUES (1, ?, ?)",
+		msg, float64(time.Now().UnixMilli())/1000.0,
+	)
+}
 
 func clearScreen() {
 	cmd := exec.Command("clear")
@@ -134,6 +142,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 			case Flag:
 				flagQuestionDB(db, c.questionLine, abs)
 				reviewed[c.questionLine] = true
+				writeNotification(db, "flagged")
 
 			case Undo:
 				if len(history) == 0 {
@@ -148,6 +157,7 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 
 				// put current card back, then previous card in front
 				queue = append([]card{prev.card, c}, queue...)
+				writeNotification(db, "undone")
 
 			default: // Wrong, Correct, Skip
 				prevState, _ := getScheduleInfo(db, c.questionLine)
@@ -158,6 +168,26 @@ func reviewDueQuestions(db *sql.DB, filePath string) {
 				})
 
 				updateSchedule(db, c.questionLine, abs, exitCode)
+
+				switch exitCode {
+				case Wrong:
+					writeNotification(db, "reset")
+				case Correct:
+					currentIndex := 1
+					if prevState != nil {
+						currentIndex = prevState.ReviewDateIndex
+					}
+					newIndex := currentIndex + 1
+					if newIndex >= len(ScheduleIntervals) {
+						newIndex = len(ScheduleIntervals) - 1
+					}
+					days := ScheduleIntervals[newIndex]
+					if days == 1 {
+						writeNotification(db, "due in 1 day")
+					} else {
+						writeNotification(db, fmt.Sprintf("due in %d days", days))
+					}
+				}
 
 				if exitCode == Wrong {
 					queue = append([]card{c}, queue...)

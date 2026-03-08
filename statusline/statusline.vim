@@ -74,6 +74,8 @@ let s:tick = 0
 let s:due_count = 0
 let s:streak = 0
 let s:reviewed_today = 0
+let s:notify_active = 0
+let s:notify_msg = ''
 
 " Define rainbow highlight groups from gradient
 for s:i in range(len(s:gradient))
@@ -86,7 +88,7 @@ hi ReviewNormal guifg=NONE guibg=NONE gui=NONE
 
 " Python-based DB access — keeps connection open in-process
 python3 << PYEOF
-import sqlite3, os, vim
+import sqlite3, os, time, vim
 
 _conn = None
 
@@ -117,14 +119,31 @@ def review_refresh():
         vim.command(f'let s:due_count = {due}')
         vim.command(f'let s:streak = {streak}')
         vim.command(f'let s:reviewed_today = {1 if reviewed_today else 0}')
+
+        # check for review notification
+        cur.execute("SELECT message, created_at FROM review_notify WHERE id = 1")
+        row = cur.fetchone()
+        if row and time.time() - row[1] < 1.0:
+            msg = row[0].replace("'", "''")
+            vim.command('let s:notify_active = 1')
+            vim.command(f"let s:notify_msg = '{msg}'")
+        else:
+            vim.command('let s:notify_active = 0')
+            vim.command("let s:notify_msg = ''")
     except Exception:
         vim.command('let s:due_count = 0')
         vim.command('let s:streak = 0')
         vim.command('let s:reviewed_today = 0')
+        vim.command('let s:notify_active = 0')
+        vim.command("let s:notify_msg = ''")
 PYEOF
 
 function! s:refresh_data() abort
   py3 review_refresh()
+endfunction
+
+function! ReviewTabline() abort
+  return s:notify_msg
 endfunction
 
 function! ReviewStatusline() abort
@@ -162,6 +181,18 @@ function! s:on_tick(timer) abort
 
   call s:refresh_data()
 
+  " show/hide tabline for notifications
+  if s:notify_active && s:notify_msg !=# ''
+    if &showtabline != 2
+      set showtabline=2
+      set tabline=%!ReviewTabline()
+    endif
+  else
+    if &showtabline != 0
+      set showtabline=0
+    endif
+  endif
+
   if mode() !=# 'c'
     redrawstatus
   endif
@@ -175,5 +206,6 @@ endif
 " Initialize
 call s:refresh_data()
 set laststatus=2
+set showtabline=0
 set statusline=%{%ReviewStatusline()%}
 let s:timer_id = timer_start(100, function('s:on_tick'), {'repeat': -1})
