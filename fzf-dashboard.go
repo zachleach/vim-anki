@@ -203,7 +203,7 @@ func displayAllDashboard(db *sql.DB) string {
 	}
 
 	home, _ := os.UserHomeDir()
-	previewCmd := fmt.Sprintf(`f="$(echo {} | cut -f1)"; echo "#   $(echo "$f" | sed 's|^%s|~|')"; echo; grep '^>	' "$f" | sed 's/^>	/>   /'`, home)
+	previewCmd := fmt.Sprintf(`f="$(echo {} | cut -f1)"; echo "#   $(echo "$f" | sed 's|^%s|~|')"; echo; grep '^>[[:space:]]' "$f" | sed 's/^>[[:space:]]*/> /'`, home)
 
 	cmd := exec.Command("fzf",
 		"--delimiter=\t",

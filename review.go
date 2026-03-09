@@ -63,7 +63,7 @@ func openFileForEdit(filePath, questionLine string) {
 
 	lineNum := 0
 	for i, line := range strings.Split(string(data), "\n") {
-		if line == ">\t"+questionLine {
+		if isQuestionLine(line) && extractQuestion(line) == questionLine {
 			lineNum = i + 1
 			break
 		}
