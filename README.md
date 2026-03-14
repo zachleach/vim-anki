@@ -2,6 +2,53 @@
 
 A decentralized spaced repetition system using vim as the flashcard interface.
 
+## Simplified Explanation
+
+### The Core Idea
+
+Vim can read from stdin. If you pipe text to it, it opens a buffer with that content:
+
+```bash
+echo "what is a context-free grammar?" | vim -
+```
+
+That's the entire foundation. A flashcard is just text piped to vim.
+
+### Hiding the Answer
+
+The question and answer are piped together, but you only want to see the question first. A vim startup command deletes everything below the first line:
+
+```bash
+echo -e "what is a context-free grammar?\n1. terminals and variables\n2. production rules\n3. start symbol" | vim - -c '2,$d'
+```
+
+Now you're staring at just the question. The answer is gone from the buffer, but vim remembers it in the undo history.
+
+### Revealing the Answer
+
+Two steps. First, save what you typed below the question into a register so it isn't lost:
+
+```vim
+let typed = getline(2, '$')
+call setreg('a', typed, 'l')
+```
+
+Then revert the buffer to its original state, restoring the full answer, and paste your attempt below a `---` separator:
+
+```vim
+earlier 99999h
+call append(line('$'), ['', '---', ''])
+normal! G"ap
+```
+
+Now you can compare what you recalled against the actual answer.
+
+### Recording Your Response
+
+Vim can exit with a specific exit code using `:cq N`. Keybindings map `4` to `:cq 4` (correct) and `1` to `:cq 1` (wrong). The calling program reads the exit code and updates the schedule.
+
+That's the whole loop. Pipe a card to vim, hide the answer, reveal it, exit with a code. A shell loop and a SQLite database turn this into a full spaced repetition system.
+
 ## Background
 
 Anki is a flashcard application that uses spaced repetition to help you remember things. You create flashcards with a question and answer, review them by seeing the question and recalling the answer, then rate how well you remembered. Based on your rating, Anki schedules when you'll see that card again—cards you know well appear less frequently, cards you struggle with appear more often.
@@ -79,17 +126,19 @@ To reveal the answer, press `<Space>` or `<Enter>`. This restores the deleted an
 
 To record your response, vim exits with a specific code using `:cq N`. The exit code tells the review binary how you performed:
 
-| Key       | Action                              |
-|-----------|-------------------------------------|
-| `<Space>` | Reveal answer with notes appended   |
-| `<Enter>` | Reveal answer with notes appended   |
-| `4`       | Correct—advance to next interval    |
-| `1`       | Wrong—reset interval to 0           |
-| `-`       | Skip—remains due today              |
-| `f`       | Flag—suspend card from reviews      |
-| `e`       | Edit source file—no schedule update |
-| `<C-z>`   | Undo—restore previous card and state|
-| `:q`      | Quit session                        |
+| Key       | Action                            | Notification    |
+|-----------|-----------------------------------|-----------------|
+| `<Space>` | Reveal answer with notes appended |                 |
+| `<Enter>` | Reveal answer with notes appended |                 |
+| `4`       | Correct—advance to next interval  | `due in N days` |
+| `1`       | Wrong—reset interval to 0         | `reset`         |
+| `-`       | Skip—remains due today            | `skipped`       |
+| `f`       | Flag—suspend card from reviews    | `flagged`       |
+| `e`       | Edit source file at question line |                 |
+| `<C-z>`   | Undo—restore previous card state  | `undone`        |
+| `:q`      | Quit session                      |                 |
+
+Notifications flash in the vim tabline for one second after each action.
 
 **Example of revealed answer:**
 
@@ -125,18 +174,6 @@ When you press `<C-z>` (ctrl-z), the system restores the previous card's databas
 When you press `f`, the card is flagged and suspended from future reviews. Flagged cards are excluded from due counts until unflagged with `review unflag`.
 
 When you answer wrong (`1`), the card is re-queued immediately so you see it again before the session ends.
-
-### Tabline Notifications
-
-During review, scheduling feedback flashes in the vim tabline for one second after each action:
-
-| Action  | Notification          |
-|---------|-----------------------|
-| Correct | `due in N days`       |
-| Wrong   | `reset`               |
-| Skip    | `skipped`             |
-| Flag    | `flagged`             |
-| Undo    | `undone`              |
 
 ### vimrc Configuration
 
@@ -267,7 +304,9 @@ review <Ctrl-T>
 
 ### Vim Hotkeys
 
-These mappings in `~/.vimrc` let you study cards directly from the file you're editing:
+These mappings in `~/.vimrc` let you launch custom study directly from the file you're editing:
 
-- `\r` (normal mode) — save and custom study all cards in current file
-- `\r` (visual mode) — save and custom study selected question(s) only
+| Mode   | Key  | Action                                  |
+|--------|------|-----------------------------------------|
+| Normal | `\r` | Save and custom study all cards in file |
+| Visual | `\r` | Save and custom study selected cards    |
