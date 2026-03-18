@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -42,8 +43,14 @@ func main() {
 	switch args[0] {
 	case "add", "edit":
 		runEdit(db)
-	case "view":
-		runView(db)
+	case "--view":
+		runWeekView(db)
+	case "--sync":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: track --sync <file>")
+			os.Exit(1)
+		}
+		runSync(db, args[1])
 	case "--select":
 		runSelect(db)
 	case "log":
@@ -183,27 +190,136 @@ func runLog(db *sql.DB) {
 	fmt.Printf("logged: %d cal (total today: %d / %d)\n", int(cal), int(total), TargetCalories)
 }
 
-func runView(db *sql.DB) {
-	today := time.Now().Format("2006-01-02")
-	entries, err := todayLog(db, today)
+func runWeekView(db *sql.DB) {
+	now := time.Now()
+	// Find Monday of current week (ISO: Monday=1, Sunday=7)
+	weekday := now.Weekday()
+	if weekday == 0 {
+		weekday = 7
+	}
+	monday := now.AddDate(0, 0, -int(weekday-1))
+
+	tmpDir, err := os.MkdirTemp("", "date.tmp")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error reading log: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error creating temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	if len(entries) == 0 {
-		fmt.Println("nothing logged today")
+	defer os.RemoveAll(tmpDir)
+
+	// Generate 7 date files and the week summary
+	var weekLines []string
+	dates := make([]string, 7)
+	for i := 0; i < 7; i++ {
+		day := monday.AddDate(0, 0, i)
+		date := day.Format("2006-01-02")
+		dates[i] = date
+
+		entries, _ := todayLog(db, date)
+		total := 0.0
+		var lines []string
+		for _, e := range entries {
+			lines = append(lines, fmt.Sprintf("\"%s\" (%d) %g", e.name, int(e.calories), e.quantity))
+			total += e.calories
+		}
+
+		// Write date file
+		os.WriteFile(filepath.Join(tmpDir, date), []byte(strings.Join(lines, "\n")+"\n"), 0644)
+
+		weekLines = append(weekLines, fmt.Sprintf("%s %d cal", date, int(total)))
+	}
+
+	// Write week summary
+	os.WriteFile(filepath.Join(tmpDir, "week"), []byte(strings.Join(weekLines, "\n")+"\n"), 0644)
+
+	// Cursor on today's line (ISO day-of-week)
+	dayOfWeek := int(now.Weekday())
+	if dayOfWeek == 0 {
+		dayOfWeek = 7
+	}
+
+	autocmd := fmt.Sprintf("autocmd BufWritePost %s/* silent !track --sync <amatch>", tmpDir)
+	cmd := exec.Command("vim",
+		"-c", autocmd,
+		fmt.Sprintf("+%d", dayOfWeek),
+		filepath.Join(tmpDir, "week"),
+	)
+	cmd.Dir = tmpDir
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
+// runSync syncs a single date file back to the DB
+func runSync(db *sql.DB, filePath string) {
+	date := filepath.Base(filePath)
+	if date == "week" {
 		return
 	}
-	total := 0.0
-	for _, e := range entries {
-		total += e.calories
-		qty := ""
-		if e.quantity != 1 {
-			qty = fmt.Sprintf(" x%.4g", e.quantity)
-		}
-		fmt.Printf("%s%s (%d cal)\n", e.name, qty, int(e.calories))
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return
 	}
-	fmt.Printf("\ntotal: %d / %d cal\n", int(total), TargetCalories)
+
+	foods, _ := allFoods(db)
+	var entries []logRow
+	for _, line := range strings.Split(string(data), "\n") {
+		name, _, qty, ok := parseLogLine(line)
+		if !ok {
+			continue
+		}
+		cal := float64(findFoodCal(foods, name)) * qty
+		entries = append(entries, logRow{
+			name:     name,
+			quantity: qty,
+			calories: cal,
+		})
+	}
+
+	deleteLogByDate(db, date)
+	for _, e := range entries {
+		logEntry(db, date, e.name, e.quantity, e.calories)
+	}
+}
+
+// parseLogLine parses `"name" (calories) quantity` format
+func parseLogLine(line string) (string, int, float64, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "\"") {
+		return "", 0, 0, false
+	}
+	end := strings.Index(line[1:], "\"")
+	if end < 0 {
+		return "", 0, 0, false
+	}
+	name := line[1 : end+1]
+	rest := strings.TrimSpace(line[end+2:])
+
+	// Parse (calories)
+	if !strings.HasPrefix(rest, "(") {
+		return "", 0, 0, false
+	}
+	closeParen := strings.Index(rest, ")")
+	if closeParen < 0 {
+		return "", 0, 0, false
+	}
+	cal, err := strconv.Atoi(strings.TrimSpace(rest[1:closeParen]))
+	if err != nil {
+		return "", 0, 0, false
+	}
+
+	// Parse optional quantity (defaults to 1)
+	qtyStr := strings.TrimSpace(rest[closeParen+1:])
+	qty := 1.0
+	if qtyStr != "" {
+		qty, err = strconv.ParseFloat(qtyStr, 64)
+		if err != nil || qty <= 0 {
+			return "", 0, 0, false
+		}
+	}
+
+	return name, cal, qty, true
 }
 
 // runEdit backs up DB, opens all foods in vim, syncs changes back

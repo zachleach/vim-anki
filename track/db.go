@@ -116,6 +116,11 @@ func weightStats(db *sql.DB, date string) (avg float64, today float64, hasToday 
 	return
 }
 
+func deleteLogByDate(db *sql.DB, date string) error {
+	_, err := db.Exec("DELETE FROM log WHERE date = ?", date)
+	return err
+}
+
 func allFoods(db *sql.DB) ([]food, error) {
 	rows, err := db.Query("SELECT name, calories FROM foods ORDER BY name")
 	if err != nil {
