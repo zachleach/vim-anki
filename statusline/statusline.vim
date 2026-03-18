@@ -116,18 +116,26 @@ def review_refresh():
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM schedule_info WHERE due_date <= date('now','localtime') AND flagged = 0")
         due = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime')")
-        reviewed_today = cur.fetchone()[0] > 0
+        def day_complete(offset):
+            mod = f'-{offset} days'
+            cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime', ?)", (mod,))
+            has_review = cur.fetchone()[0] > 0
+            cur.execute("SELECT COUNT(*) FROM log WHERE date = date('now','localtime', ?)", (mod,))
+            has_food = cur.fetchone()[0] > 0
+            cur.execute("SELECT COUNT(*) FROM weight WHERE date = date('now','localtime', ?)", (mod,))
+            has_weight = cur.fetchone()[0] > 0
+            return has_review and has_food and has_weight
+
+        completed_today = day_complete(0)
         streak = 0
-        start = 0 if reviewed_today else 1
+        start = 0 if completed_today else 1
         for i in range(start, 366):
-            cur.execute("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime', ?)", (f'-{i} days',))
-            if cur.fetchone()[0] == 0:
+            if not day_complete(i):
                 break
             streak += 1
         vim.command(f'let s:due_count = {due}')
         vim.command(f'let s:streak = {streak}')
-        vim.command(f'let s:reviewed_today = {1 if reviewed_today else 0}')
+        vim.command(f'let s:reviewed_today = {1 if completed_today else 0}')
 
         # check for review notification
         cur.execute("SELECT message, created_at FROM review_notify WHERE id = 1")
@@ -211,22 +219,22 @@ function! ReviewStatusline() abort
 
   " Cal segment after cards due
   if s:cal_today > 0
-    let cal_hl = s:cal_today >= 2000 ? 'TrackCalRed' : 'TrackCalGreen'
+    let cal_hl = s:cal_today >= 3000 ? 'TrackCalRed' : 'TrackCalGreen'
     let result .= '%#ReviewDark# · %#' . cal_hl . '#' . s:cal_today . ' cal'
   else
     let result .= '%#ReviewDark# · 0 cal'
   endif
 
   " Weight segment
-  if s:weight_has_data
+  if s:weight_has_data && s:weight_has_today
     let avg_rounded = float2nr(round(s:weight_avg))
     let result .= '%#ReviewDark# · ' . avg_rounded . ' lbs'
-    if s:weight_has_today
-      let dev = s:weight_today - s:weight_avg
-      let dev_hl = dev >= 0 ? 'TrackWeightDevRed' : 'TrackWeightDevGreen'
-      let dev_sign = dev >= 0 ? '+' : ''
-      let result .= ' %#' . dev_hl . '#(' . dev_sign . printf('%.1f', dev) . ')'
-    endif
+    let dev = s:weight_today - s:weight_avg
+    let dev_hl = dev >= 0 ? 'TrackWeightDevRed' : 'TrackWeightDevGreen'
+    let dev_sign = dev >= 0 ? '+' : ''
+    let result .= ' %#' . dev_hl . '#(' . dev_sign . printf('%.1f', dev) . ')'
+  else
+    let result .= '%#ReviewDark# · ???.? lbs'
   endif
 
   if s:reviewed_today

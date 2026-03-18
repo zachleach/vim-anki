@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const TargetCalories = 2000
+const TargetCalories = 3000
 
 func main() {
 	args := os.Args[1:]
@@ -69,7 +69,7 @@ func main() {
 func fzfSelectFood(foods []food) string {
 	var buf bytes.Buffer
 	for _, f := range foods {
-		fmt.Fprintf(&buf, "%s\t\"%s\" (%d)\n", f.name, f.name, f.calories)
+		fmt.Fprintf(&buf, "%s\t%s (%d)\n", f.name, f.name, f.calories)
 	}
 
 	cmd := exec.Command("fzf",
@@ -82,6 +82,7 @@ func fzfSelectFood(foods []food) string {
 		"--height=40%",
 		"--prompt=> ",
 		"--pointer= ",
+		"--color=bg+:-1",
 	)
 	cmd.Stdin = &buf
 	cmd.Stderr = os.Stderr
@@ -225,7 +226,16 @@ func runWeekView(db *sql.DB) {
 		// Write date file
 		os.WriteFile(filepath.Join(tmpDir, date), []byte(strings.Join(lines, "\n")+"\n"), 0644)
 
-		weekLines = append(weekLines, fmt.Sprintf("%s %d cal", date, int(total)))
+		// Weight for this day
+		var weightStr string
+		var lbs float64
+		if err := db.QueryRow("SELECT lbs FROM weight WHERE date = ?", date).Scan(&lbs); err == nil {
+			weightStr = fmt.Sprintf("%.1f", lbs)
+		} else {
+			weightStr = "???.?"
+		}
+
+		weekLines = append(weekLines, fmt.Sprintf("%s (%s) %d cal", date, weightStr, int(total)))
 	}
 
 	// Write week summary

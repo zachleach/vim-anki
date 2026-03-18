@@ -67,21 +67,6 @@ func getAllFiles(db *sql.DB) []allFile {
 	return result
 }
 
-func computeStreak(db *sql.DB) int {
-	streak := 0
-	for i := 0; ; i++ {
-		var count int
-		db.QueryRow(
-			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', 'localtime', ?)",
-			fmt.Sprintf("-%d days", i),
-		).Scan(&count)
-		if count == 0 {
-			break
-		}
-		streak++
-	}
-	return streak
-}
 
 func displayDashboard(db *sql.DB) string {
 	files := getDueFiles(db)
@@ -96,15 +81,12 @@ func displayDashboard(db *sql.DB) string {
 		totalDue += f.due
 	}
 
-	// streak
-	streak := computeStreak(db)
-
 	// header
 	word := "cards"
 	if totalDue == 1 {
 		word = "card"
 	}
-	header := fmt.Sprintf("\033[38;2;0;168;10m%d %s due · %d day streak\033[0m", totalDue, word, streak)
+	header := fmt.Sprintf("\033[38;2;0;168;10m%d %s due\033[0m", totalDue, word)
 
 	// find max name length for padding
 	maxLen := 0
@@ -172,13 +154,11 @@ func displayAllDashboard(db *sql.DB) string {
 		totalCards += f.total
 	}
 
-	streak := computeStreak(db)
-
 	word := "cards"
 	if totalDue == 1 {
 		word = "card"
 	}
-	header := fmt.Sprintf("\033[38;2;0;168;10m%d %s due · %d total · %d day streak\033[0m", totalDue, word, totalCards, streak)
+	header := fmt.Sprintf("\033[38;2;0;168;10m%d %s due · %d total\033[0m", totalDue, word, totalCards)
 
 	// find max name length for padding
 	maxLen := 0

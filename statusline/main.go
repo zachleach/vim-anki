@@ -12,7 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const TargetCalories = 2000
+const TargetCalories = 3000
 
 func main() {
 	// Consume stdin (Claude Code sends JSON)
@@ -71,30 +71,41 @@ func main() {
 		word = "card"
 	}
 
-	// Compute review streak
-	var todayCount int
-	db.QueryRow("SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now','localtime')").Scan(&todayCount)
-	reviewedToday := todayCount > 0
+	// Compute streak: a day counts only if all three conditions are met:
+	// 1. reviewed/added a note (review_log entry)
+	// 2. tracked food (log entry)
+	// 3. tracked body weight (weight entry)
+	dayComplete := func(offset int) bool {
+		modifier := fmt.Sprintf("-%d days", offset)
+		var reviewCount, foodCount, weightCount int
+		db.QueryRow(
+			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', 'localtime', ?)", modifier,
+		).Scan(&reviewCount)
+		db.QueryRow(
+			"SELECT COUNT(*) FROM log WHERE date = date('now', 'localtime', ?)", modifier,
+		).Scan(&foodCount)
+		db.QueryRow(
+			"SELECT COUNT(*) FROM weight WHERE date = date('now', 'localtime', ?)", modifier,
+		).Scan(&weightCount)
+		return reviewCount > 0 && foodCount > 0 && weightCount > 0
+	}
+
+	completedToday := dayComplete(0)
 
 	streak := 0
 	start := 0
-	if !reviewedToday {
+	if !completedToday {
 		start = 1
 	}
 	for i := start; ; i++ {
-		var count int
-		db.QueryRow(
-			"SELECT COUNT(*) FROM review_log WHERE date(reviewed_at) = date('now', 'localtime', ?)",
-			fmt.Sprintf("-%d days", i),
-		).Scan(&count)
-		if count == 0 {
+		if !dayComplete(i) {
 			break
 		}
 		streak++
 	}
 
-	// dark gray streak if not reviewed today
-	streakDim := !reviewedToday
+	// dark gray streak if not all three done today
+	streakDim := !completedToday
 
 	// Query track data from same DB
 	var calToday float64
@@ -144,18 +155,18 @@ func main() {
 	}
 
 	// Weight segment
-	if hasWeightData {
+	if hasWeightData && hasWeightToday {
 		fmt.Fprintf(&out, " %s%s %d lbs%s", dim, dot, int(weightAvg+0.5), reset)
-		if hasWeightToday {
-			dev := weightToday - weightAvg
-			devColor := "\033[38;2;128;236;128m" // green: losing weight
-			sign := ""
-			if dev >= 0 {
-				devColor = "\033[38;2;244;120;120m" // red: gaining weight
-				sign = "+"
-			}
-			fmt.Fprintf(&out, " %s(%s%.1f)%s", devColor, sign, dev, reset)
+		dev := weightToday - weightAvg
+		devColor := "\033[38;2;128;236;128m" // green: losing weight
+		sign := ""
+		if dev >= 0 {
+			devColor = "\033[38;2;244;120;120m" // red: gaining weight
+			sign = "+"
 		}
+		fmt.Fprintf(&out, " %s(%s%.1f)%s", devColor, sign, dev, reset)
+	} else {
+		fmt.Fprintf(&out, " %s%s ???.? lbs%s", dim, dot, reset)
 	}
 
 	// Streak
