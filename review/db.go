@@ -22,11 +22,48 @@ type ScheduleRow struct {
 
 func dbPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".notes.db")
+	return filepath.Join(home, ".personal.db")
 }
 
 func openDB() (*sql.DB, error) {
+	migrateDB()
 	return sql.Open("sqlite3", dbPath())
+}
+
+func migrateDB() {
+	home, _ := os.UserHomeDir()
+	personalDB := filepath.Join(home, ".personal.db")
+	notesDB := filepath.Join(home, ".notes.db")
+	trackDB := filepath.Join(home, ".track.db")
+
+	if _, err := os.Stat(personalDB); err == nil {
+		return // already exists
+	}
+
+	// copy ~/.notes.db -> ~/.personal.db using sqlite3 CLI (handles WAL correctly)
+	if _, err := os.Stat(notesDB); err == nil {
+		exec.Command("sqlite3", notesDB, ".backup "+personalDB).Run()
+	}
+
+	// attach ~/.track.db and import its tables
+	if _, err := os.Stat(trackDB); err != nil {
+		return
+	}
+	db, err := sql.Open("sqlite3", personalDB)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS foods (name TEXT PRIMARY KEY, calories INTEGER NOT NULL)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, name TEXT NOT NULL, quantity REAL NOT NULL, calories REAL NOT NULL)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS weight (date TEXT PRIMARY KEY, lbs REAL NOT NULL)`)
+
+	db.Exec(fmt.Sprintf(`ATTACH DATABASE '%s' AS track`, trackDB))
+	db.Exec(`INSERT OR IGNORE INTO foods SELECT * FROM track.foods`)
+	db.Exec(`INSERT OR IGNORE INTO log (date, name, quantity, calories) SELECT date, name, quantity, calories FROM track.log`)
+	db.Exec(`INSERT OR IGNORE INTO weight SELECT * FROM track.weight`)
+	db.Exec(`DETACH DATABASE track`)
 }
 
 func initDB(db *sql.DB) error {

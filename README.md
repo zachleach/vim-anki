@@ -1,4 +1,8 @@
-# review
+# personal-tools
+
+Personal CLI tools: spaced repetition (`review`) and calorie/weight tracking (`track`), sharing a unified SQLite database.
+
+## review
 
 A decentralized spaced repetition system using vim as the flashcard interface.
 
@@ -55,7 +59,7 @@ Anki is a flashcard application that uses spaced repetition to help you remember
 
 The problem is that Anki has its own interface for creating and reviewing cards. If you take notes in a text editor like vim, you have to copy and paste content into Anki separately. This project eliminates that friction by bringing spaced repetition to the terminal—your notes are your flashcards, and you create and review them in the same place.
 
-Unlike Anki, this system is decentralized. Flashcard files can live anywhere on your filesystem—in project directories, scattered across topic folders, wherever makes sense. A single SQLite database at `~/.notes.db` tracks scheduling for all of them. There's no central flashcard directory; you just write notes with question markers and the system finds and tracks them.
+Unlike Anki, this system is decentralized. Flashcard files can live anywhere on your filesystem—in project directories, scattered across topic folders, wherever makes sense. A single SQLite database at `~/.personal.db` tracks scheduling for all of them. There's no central flashcard directory; you just write notes with question markers and the system finds and tracks them.
 
 ## Installation
 
@@ -71,7 +75,7 @@ Unlike Anki, this system is decentralized. Flashcard files can live anywhere on 
 1. Clone and build:
    ```bash
    git clone <repo-url> ~/review
-   cd ~/review && CGO_ENABLED=1 go build -o review . && cp review ~/.local/bin/
+   cd ~/personal-tools/review && CGO_ENABLED=1 go build -o review . && cp review ~/.local/bin/
    ```
 
 2. Add the vim keybindings to `~/.vimrc` (see [vimrc Configuration](#vimrc-configuration) below)

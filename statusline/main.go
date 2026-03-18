@@ -12,13 +12,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const TargetCalories = 2000
+
 func main() {
 	// Consume stdin (Claude Code sends JSON)
 	json.NewDecoder(os.Stdin).Decode(&map[string]interface{}{})
 
 	nowMs := time.Now().UnixMilli()
 	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, ".notes.db")
+	dbPath := filepath.Join(home, ".personal.db")
 
 	// Rainbow colors
 	colors := [11]string{
@@ -94,23 +96,71 @@ func main() {
 	// dark gray streak if not reviewed today
 	streakDim := !reviewedToday
 
+	// Query track data from same DB
+	var calToday float64
+	db.QueryRow("SELECT COALESCE(SUM(calories), 0) FROM log WHERE date = date('now','localtime')").Scan(&calToday)
+
+	var weightToday float64
+	var hasWeightToday bool
+	if err := db.QueryRow("SELECT lbs FROM weight WHERE date = date('now','localtime')").Scan(&weightToday); err == nil {
+		hasWeightToday = true
+	}
+
+	var weightAvg float64
+	var hasWeightData bool
+	if rows, err := db.Query("SELECT lbs FROM weight WHERE date <= date('now','localtime') ORDER BY date DESC LIMIT 7"); err == nil {
+		defer rows.Close()
+		var sum float64
+		var count int
+		for rows.Next() {
+			var v float64
+			rows.Scan(&v)
+			sum += v
+			count++
+		}
+		if count > 0 {
+			weightAvg = sum / float64(count)
+			hasWeightData = true
+		}
+	}
+
 	var out strings.Builder
 
 	if total == 0 {
-		// All dark gray when nothing due
-		if streakDim {
-			fmt.Fprintf(&out, "%s0 cards due · %d day streak%s", dim, streak, reset)
-		} else {
-			fmt.Fprintf(&out, "%s0 cards due%s %s %d day streak", dim, reset, dot, streak)
-		}
+		fmt.Fprintf(&out, "%s0 cards due%s", dim, reset)
 	} else {
-		// Rainbow for cards, default color for the rest
 		out.WriteString(rainbow(fmt.Sprintf("%d %s due", total, word)))
-		if streakDim {
-			fmt.Fprintf(&out, " %s %s%d day streak%s", dot, dim, streak, reset)
-		} else {
-			fmt.Fprintf(&out, " %s %d day streak", dot, streak)
+	}
+
+	// Cal segment after cards due
+	if calToday > 0 {
+		calColor := "\033[38;2;128;236;128m" // light green: under target
+		if calToday >= TargetCalories {
+			calColor = "\033[38;2;244;120;120m" // red: at/over target
 		}
+		fmt.Fprintf(&out, " %s%s%s %s%d cal%s", dim, dot, reset, calColor, int(calToday), reset)
+	}
+
+	// Weight segment
+	if hasWeightData {
+		fmt.Fprintf(&out, " %s%s %d lbs%s", dim, dot, int(weightAvg+0.5), reset)
+		if hasWeightToday {
+			dev := weightToday - weightAvg
+			devColor := "\033[38;2;128;236;128m" // green: losing weight
+			sign := ""
+			if dev >= 0 {
+				devColor = "\033[38;2;244;120;120m" // red: gaining weight
+				sign = "+"
+			}
+			fmt.Fprintf(&out, " %s(%s%.1f)%s", devColor, sign, dev, reset)
+		}
+	}
+
+	// Streak
+	if streakDim {
+		fmt.Fprintf(&out, " %s%s %d day streak%s", dim, dot, streak, reset)
+	} else {
+		fmt.Fprintf(&out, " %s %d day streak", dot, streak)
 	}
 
 	fmt.Println(out.String())

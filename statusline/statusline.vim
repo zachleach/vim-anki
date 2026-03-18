@@ -1,7 +1,7 @@
 " statusline.vim — animated spaced repetition statusline
-" Usage: source ~/review/statusline/statusline.vim
+" Usage: source ~/personal-tools/statusline/statusline.vim
 
-let s:db = expand('~/.notes.db')
+let s:db = expand('~/.personal.db')
 
 " Mintty palette: index -> hex
 let s:palette = {
@@ -76,6 +76,11 @@ let s:streak = 0
 let s:reviewed_today = 0
 let s:notify_active = 0
 let s:notify_msg = ''
+let s:cal_today = 0
+let s:weight_avg = 0.0
+let s:weight_today = 0.0
+let s:weight_has_data = 0
+let s:weight_has_today = 0
 
 " Define rainbow highlight groups from gradient
 for s:i in range(len(s:gradient))
@@ -85,6 +90,7 @@ hi ReviewDim guifg=#BFBFBF guibg=NONE gui=NONE
 hi ReviewDark guifg=#646464 guibg=NONE gui=NONE
 hi ReviewPad guifg=#000000 guibg=#000000 gui=NONE
 hi ReviewNormal guifg=NONE guibg=NONE gui=NONE
+hi TrackCal guifg=#80EC80 guibg=NONE gui=NONE
 
 " Python-based DB access — keeps connection open in-process
 python3 << PYEOF
@@ -94,7 +100,7 @@ _conn = None
 
 def _get_conn():
     global _conn
-    db = os.path.expanduser('~/.notes.db')
+    db = os.path.expanduser('~/.personal.db')
     if _conn is None:
         _conn = sqlite3.connect(db)
         _conn.execute("PRAGMA journal_mode=WAL")
@@ -130,12 +136,44 @@ def review_refresh():
         else:
             vim.command('let s:notify_active = 0')
             vim.command("let s:notify_msg = ''")
+
+        # Track data: calories and weight from same DB
+        try:
+            cur.execute("SELECT COALESCE(SUM(calories), 0) FROM log WHERE date = date('now','localtime')")
+            cal = cur.fetchone()[0]
+            vim.command(f'let s:cal_today = {int(cal)}')
+        except Exception:
+            vim.command('let s:cal_today = 0')
+
+        try:
+            cur.execute("SELECT lbs FROM weight WHERE date = date('now','localtime')")
+            wrow = cur.fetchone()
+            has_today = wrow is not None
+            weight_today = wrow[0] if has_today else 0.0
+
+            cur.execute("SELECT lbs FROM weight WHERE date <= date('now','localtime') ORDER BY date DESC LIMIT 7")
+            wrows = cur.fetchall()
+            if wrows:
+                avg = sum(r[0] for r in wrows) / len(wrows)
+                vim.command(f'let s:weight_avg = {avg:.1f}')
+                vim.command(f'let s:weight_today = {weight_today:.1f}')
+                vim.command('let s:weight_has_data = 1')
+                vim.command(f'let s:weight_has_today = {1 if has_today else 0}')
+            else:
+                vim.command('let s:weight_has_data = 0')
+                vim.command('let s:weight_has_today = 0')
+        except Exception:
+            vim.command('let s:weight_has_data = 0')
+            vim.command('let s:weight_has_today = 0')
     except Exception:
         vim.command('let s:due_count = 0')
         vim.command('let s:streak = 0')
         vim.command('let s:reviewed_today = 0')
         vim.command('let s:notify_active = 0')
         vim.command("let s:notify_msg = ''")
+        vim.command('let s:cal_today = 0')
+        vim.command('let s:weight_has_data = 0')
+        vim.command('let s:weight_has_today = 0')
 PYEOF
 
 function! s:refresh_data() abort
@@ -152,8 +190,9 @@ function! ReviewStatusline() abort
   let streak_text = printf(' · %d day streak', s:streak)
 
   let result = ''
+
   if s:due_count == 0
-    let result = '%#ReviewDark#' . due_text
+    let result .= '%#ReviewDark#' . due_text
   else
     let ci = 0
     for char in split(due_text, '\zs')
@@ -165,6 +204,32 @@ function! ReviewStatusline() abort
         let ci += 1
       endif
     endfor
+  endif
+
+  " Cal segment after cards due
+  if s:cal_today > 0
+    if s:cal_today >= 2000
+      hi TrackCal guifg=#F47878 guibg=NONE gui=NONE
+    else
+      hi TrackCal guifg=#80EC80 guibg=NONE gui=NONE
+    endif
+    let result .= '%#ReviewDark# · %#TrackCal#' . s:cal_today . ' cal'
+  endif
+
+  " Weight segment
+  if s:weight_has_data
+    let avg_rounded = float2nr(round(s:weight_avg))
+    let result .= '%#ReviewDark# · ' . avg_rounded . ' lbs'
+    if s:weight_has_today
+      let dev = s:weight_today - s:weight_avg
+      if dev >= 0
+        hi TrackWeightDev guifg=#F47878 guibg=NONE gui=NONE
+        let result .= ' %#TrackWeightDev#(+' . printf('%.1f', dev) . ')'
+      else
+        hi TrackWeightDev guifg=#80EC80 guibg=NONE gui=NONE
+        let result .= ' %#TrackWeightDev#(' . printf('%.1f', dev) . ')'
+      endif
+    endif
   endif
 
   if s:reviewed_today
