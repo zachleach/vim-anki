@@ -19,6 +19,9 @@ The vim statusline enables `termguicolors` for truecolor gradient rendering. Thi
 
 `s:translate_highlights()` converts all existing cterm colors to gui equivalents using the mintty palette at source time. For syntax groups loaded lazily (e.g. `htmlBold` from markdown), a deferred `Syntax` autocmd with `timer_start(0, ...)` explicitly sets `htmlBold guifg=#FFFFFF gui=bold`. The timer is necessary because `Syntax` fires before the syntax file finishes loading. The fix is intentionally targeted (not generic); applying white to ALL bold-without-foreground groups would incorrectly change vim UI elements like `ModeMsg` (`-- INSERT --`, `-- VISUAL --`).
 
+### Highlight groups must be pre-defined
+Never run `hi` commands inside `ReviewStatusline()` or any function evaluated during statusline rendering. Vim's `%{%...%}` expression is evaluated on every `redrawstatus` (every 100ms), and executing `hi` during evaluation forces vim to invalidate highlights and redraw, causing visible cursor flicker. Instead, pre-define all highlight group variants at load time (e.g., `TrackCalGreen`, `TrackCalRed`) and switch between them using `%#GroupName#%` references in the statusline string.
+
 ## Segments
 - **Cards due**: rainbow gradient when >0, dark gray when 0
 - **Calories**: green when under 2000, red when at/over 2000

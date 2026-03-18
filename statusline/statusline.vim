@@ -90,7 +90,10 @@ hi ReviewDim guifg=#BFBFBF guibg=NONE gui=NONE
 hi ReviewDark guifg=#646464 guibg=NONE gui=NONE
 hi ReviewPad guifg=#000000 guibg=#000000 gui=NONE
 hi ReviewNormal guifg=NONE guibg=NONE gui=NONE
-hi TrackCal guifg=#80EC80 guibg=NONE gui=NONE
+hi TrackCalGreen guifg=#80EC80 guibg=NONE gui=NONE
+hi TrackCalRed guifg=#F47878 guibg=NONE gui=NONE
+hi TrackWeightDevGreen guifg=#80EC80 guibg=NONE gui=NONE
+hi TrackWeightDevRed guifg=#F47878 guibg=NONE gui=NONE
 
 " Python-based DB access — keeps connection open in-process
 python3 << PYEOF
@@ -208,12 +211,10 @@ function! ReviewStatusline() abort
 
   " Cal segment after cards due
   if s:cal_today > 0
-    if s:cal_today >= 2000
-      hi TrackCal guifg=#F47878 guibg=NONE gui=NONE
-    else
-      hi TrackCal guifg=#80EC80 guibg=NONE gui=NONE
-    endif
-    let result .= '%#ReviewDark# · %#TrackCal#' . s:cal_today . ' cal'
+    let cal_hl = s:cal_today >= 2000 ? 'TrackCalRed' : 'TrackCalGreen'
+    let result .= '%#ReviewDark# · %#' . cal_hl . '#' . s:cal_today . ' cal'
+  else
+    let result .= '%#ReviewDark# · 0 cal'
   endif
 
   " Weight segment
@@ -222,13 +223,9 @@ function! ReviewStatusline() abort
     let result .= '%#ReviewDark# · ' . avg_rounded . ' lbs'
     if s:weight_has_today
       let dev = s:weight_today - s:weight_avg
-      if dev >= 0
-        hi TrackWeightDev guifg=#F47878 guibg=NONE gui=NONE
-        let result .= ' %#TrackWeightDev#(+' . printf('%.1f', dev) . ')'
-      else
-        hi TrackWeightDev guifg=#80EC80 guibg=NONE gui=NONE
-        let result .= ' %#TrackWeightDev#(' . printf('%.1f', dev) . ')'
-      endif
+      let dev_hl = dev >= 0 ? 'TrackWeightDevRed' : 'TrackWeightDevGreen'
+      let dev_sign = dev >= 0 ? '+' : ''
+      let result .= ' %#' . dev_hl . '#(' . dev_sign . printf('%.1f', dev) . ')'
     endif
   endif
 

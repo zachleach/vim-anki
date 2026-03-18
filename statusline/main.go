@@ -139,6 +139,8 @@ func main() {
 			calColor = "\033[38;2;244;120;120m" // red: at/over target
 		}
 		fmt.Fprintf(&out, " %s%s%s %s%d cal%s", dim, dot, reset, calColor, int(calToday), reset)
+	} else {
+		fmt.Fprintf(&out, " %s%s 0 cal%s", dim, dot, reset)
 	}
 
 	// Weight segment
