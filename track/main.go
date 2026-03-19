@@ -173,10 +173,14 @@ func runLog(db *sql.DB) {
 	reader := bufio.NewReader(os.Stdin)
 	qtyStr, _ := reader.ReadString('\n')
 	qtyStr = strings.TrimSpace(qtyStr)
-	qty, err := strconv.ParseFloat(qtyStr, 64)
-	if err != nil || qty <= 0 {
-		fmt.Fprintln(os.Stderr, "invalid quantity")
-		os.Exit(1)
+	qty := 1.0
+	if qtyStr != "" {
+		var err error
+		qty, err = strconv.ParseFloat(qtyStr, 64)
+		if err != nil || qty <= 0 {
+			fmt.Fprintln(os.Stderr, "invalid quantity")
+			os.Exit(1)
+		}
 	}
 
 	cal := qty * float64(foodCal)
@@ -247,9 +251,27 @@ func runWeekView(db *sql.DB) {
 		dayOfWeek = 7
 	}
 
-	autocmd := fmt.Sprintf("autocmd BufWritePost %s/* silent !track --sync <amatch>", tmpDir)
+	pickFile := filepath.Join(tmpDir, ".pick")
+	vimrc := filepath.Join(tmpDir, ".vimrc")
+	vimScript := fmt.Sprintf(`autocmd BufWritePost %s/* silent !track --sync <amatch>
+
+function! s:TrackSelect() abort
+  silent !clear && track --select > %s; true
+  redraw!
+  if filereadable('%s')
+    let l:line = trim(readfile('%s')[0])
+    call delete('%s')
+    execute 'normal! Go' . l:line . ' 1'
+  endif
+endfunction
+
+autocmd BufRead %s/* nnoremap <buffer> t :call <SID>TrackSelect()<CR>
+nnoremap <buffer> t :call <SID>TrackSelect()<CR>
+`, tmpDir, pickFile, pickFile, pickFile, pickFile, tmpDir)
+	os.WriteFile(vimrc, []byte(vimScript), 0644)
+
 	cmd := exec.Command("vim",
-		"-c", autocmd,
+		"-S", vimrc,
 		fmt.Sprintf("+%d", dayOfWeek),
 		filepath.Join(tmpDir, "week"),
 	)
